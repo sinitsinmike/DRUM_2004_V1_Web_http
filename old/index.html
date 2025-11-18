@@ -1,0 +1,515 @@
+<!--
+File: web/emulator/index.html
+Purpose: Браузерный эмулятор синт-движка + редакторы таблиц/огибающих + Web Serial сохранение /SNDx
+Why-important comments only: соответствие формату /SNDx и минимальные задержки аудио.
+-->
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<title>DrumBox Web Synth Editor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root { --bg:#0b0d0f; --fg:#e8eaed; --mut:#97a1ab; --acc:#70e1ff; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+  .wrap { max-width:1200px; margin:0 auto; padding:16px; display:grid; grid-template-columns:320px 1fr; gap:16px; }
+  h2,h3 { margin:.2rem 0 .6rem; font-weight:600; }
+  .card { background:#121417; border:1px solid #1d2228; border-radius:14px; padding:12px; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  button,input,select { background:#0f1215; color:var(--fg); border:1px solid #232a31; border-radius:10px; padding:8px 10px; }
+  button:hover { border-color:#2f3a45; }
+  label { color:var(--mut); font-size:12px; display:block; margin-top:8px; }
+  .grid16 { display:grid; grid-template-columns:repeat(8,1fr); gap:6px; }
+  .voice { padding:8px; text-align:center; background:#0e1114; border:1px solid #232a31; border-radius:12px; cursor:pointer; user-select:none; }
+  .voice.active{ outline:2px solid var(--acc); }
+  .slider { display:flex; gap:8px; align-items:center; }
+  .slider input[type=range]{ width:220px; }
+  .canv { background:#0c0e11; border:1px dashed #2a3440; border-radius:12px; width:100%; height:180px; display:block; }
+  .notegrid{ display:grid; grid-template-columns:repeat(16,1fr); gap:4px; }
+  .step{ height:24px; background:#0e1114; border:1px solid #232a31; border-radius:6px; cursor:pointer; }
+  .step.on{ background:#1c7c4f; border-color:#1f8a57; }
+  .muted{ color:#7e8b97; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .log{ height:200px; overflow:auto; background:#0b0d10; border:1px solid #222a33; border-radius:10px; padding:8px; white-space:pre-wrap;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h2>Voices</h2>
+    <div id="voices" class="grid16"></div>
+
+    <h3 style="margin-top:12px;">Presets</h3>
+    <div class="row">
+      <button id="preset-kick">Kick</button>
+      <button id="preset-snare">Snare</button>
+      <button id="preset-hh">HiHat</button>
+      <button id="preset-bass">Bass</button>
+    </div>
+
+    <h3 style="margin-top:12px;">Pattern (Preview)</h3>
+    <div id="pattern" class="notegrid"></div>
+    <div class="row" style="margin-top:8px;">
+      <button id="play">Play</button>
+      <button id="stop">Stop</button>
+      <label>BPM <input id="bpm" type="number" min="40" max="240" value="120"></label>
+    </div>
+
+    <h3 style="margin-top:12px;">Device</h3>
+    <div class="row">
+      <button id="connect">Connect</button>
+      <label class="mono">Slot /SND<input id="slot" type="number" min="0" max="99" value="0"></label>
+      <button id="save">Save to device</button>
+    </div>
+    <div id="serlog" class="log mono" style="margin-top:8px;"></div>
+  </div>
+
+  <div class="card">
+    <h2>Voice Editor</h2>
+    <div class="row">
+      <div class="slider"><span class="muted">Wave</span><select id="waveSel"></select></div>
+      <div class="slider"><span class="muted">Env</span><select id="envSel"><option value="0">Env0</option><option value="1">Env1</option><option value="2">Env2</option><option value="3">Env3</option></select></div>
+      <button id="preview">Preview</button>
+    </div>
+
+    <div class="row" style="margin-top:8px;">
+      <div>
+        <label>WaveTable (edit)</label>
+        <canvas id="wtCanvas" class="canv" width="600" height="180"></canvas>
+        <div class="row" style="margin-top:6px;">
+          <button data-wt="sine">Sine</button>
+          <button data-wt="tri">Tri</button>
+          <button data-wt="saw">Saw</button>
+          <button data-wt="square">Square</button>
+          <button data-wt="noise">Noise</button>
+          <button id="useCustomWT">Use Custom</button>
+          <span class="muted">* В железе пока только 14 предустановленных волн</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:8px;">
+      <div>
+        <label>Envelope (edit)</label>
+        <canvas id="envCanvas" class="canv" width="600" height="180"></canvas>
+        <div class="row" style="margin-top:6px;">
+          <button data-env="env0">Env0</button>
+          <button data-env="env1">Env1</button>
+          <button data-env="env2">Env2</button>
+          <button data-env="env3">Env3</button>
+          <button id="useCustomEnv">Use Custom</button>
+          <span class="muted">* На устройстве сейчас 4 огибающие</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:8px;">
+      <div class="slider"><span class="muted">Pitch</span><input id="pitch" type="range" min="0" max="127" value="60"><span id="pitchv"></span></div>
+      <div class="slider"><span class="muted">Length</span><input id="length" type="range" min="0" max="127" value="64"><span id="lengthv"></span></div>
+      <div class="slider"><span class="muted">Mod</span><input id="mod" type="range" min="0" max="127" value="64"><span id="modv"></span></div>
+      <div class="slider"><span class="muted">Vol</span><input id="vol" type="range" min="0" max="31" value="24"><span id="volv"></span></div>
+      <div class="slider"><span class="muted">Pan</span><input id="pan" type="range" min="-64" max="63" value="0"><span id="panv"></span></div>
+      <div class="slider"><span class="muted">Filter</span><input id="filter" type="range" min="0" max="255" value="0"><span id="filterv"></span></div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+/* ---------------------------- Config / State ---------------------------- */
+const SR = 48000;
+const VOICES = 16;
+const WT_SIZE = 256;
+
+// Соответствие индексов волн — держим 14 как в прошивке:
+const WAVE_NAMES = [
+  "Sin","Tri","Square","Saw","Ramp","WN1","WN2","WN3","WN4","WN5","WN6","WN7","Noise","Phasor"
+];
+
+const voicesEl = document.getElementById('voices');
+const patternEl = document.getElementById('pattern');
+const waveSel = document.getElementById('waveSel');
+const envSel  = document.getElementById('envSel');
+const wtCanvas = document.getElementById('wtCanvas');
+const envCanvas = document.getElementById('envCanvas');
+
+const sliders = ["pitch","length","mod","vol","pan","filter"];
+const s = Object.fromEntries(sliders.map(id=>[id, document.getElementById(id)]));
+const sv = Object.fromEntries(sliders.map(id=>[id+"v", document.getElementById(id+"v")]));
+
+let currentVoice = 0;
+
+// Голосовые параметры (как ROTvalue[voice][8])
+const voiceParams = Array.from({length:VOICES}, (_,i)=>({
+  wave: 0, env: 0, length: 64, pitch: 60, mod:64, vol:24, pan:0, filter:0
+}));
+
+// Локальные кастомные WT/ENV (только для превью)
+let customWT = genSine();
+let customEnv = defaultEnv(0);
+
+// Простой паттерн 16 шагов: по голосу currentVoice
+const pattern = new Array(16).fill(false);
+
+/* ---------------------------- UI build ---------------------------- */
+function buildVoices() {
+  voicesEl.innerHTML = "";
+  for (let i=0;i<VOICES;i++){
+    const d = document.createElement('div');
+    d.className = "voice" + (i===currentVoice?" active":"");
+    d.textContent = "V"+i;
+    d.onclick = ()=>{ currentVoice=i; buildVoices(); syncUIFromVoice(); };
+    voicesEl.appendChild(d);
+  }
+}
+function buildPattern() {
+  patternEl.innerHTML="";
+  for (let i=0;i<16;i++){
+    const st = document.createElement('div');
+    st.className = "step"+(pattern[i]?" on":"");
+    st.onclick = ()=>{ pattern[i]=!pattern[i]; st.classList.toggle("on"); };
+    patternEl.appendChild(st);
+  }
+}
+function buildWaveSel(){
+  waveSel.innerHTML = WAVE_NAMES.map((n,i)=>`<option value="${i}">${i}: ${n}</option>`).join("");
+}
+
+function syncUIFromVoice(){
+  const vp = voiceParams[currentVoice];
+  waveSel.value = vp.wave;
+  envSel.value  = vp.env;
+  s.pitch.value = vp.pitch;  sv.pitchv.textContent  = vp.pitch;
+  s.length.value= vp.length; sv.lengthv.textContent = vp.length;
+  s.mod.value   = vp.mod;    sv.modv.textContent    = vp.mod;
+  s.vol.value   = vp.vol;    sv.volv.textContent    = vp.vol;
+  s.pan.value   = vp.pan;    sv.panv.textContent    = vp.pan;
+  s.filter.value= vp.filter; sv.filterv.textContent = vp.filter;
+  drawWT(); drawEnv();
+}
+
+buildVoices(); buildPattern(); buildWaveSel(); syncUIFromVoice();
+
+waveSel.onchange = ()=>{ voiceParams[currentVoice].wave = Number(waveSel.value); };
+envSel.onchange  = ()=>{ voiceParams[currentVoice].env  = Number(envSel.value); };
+
+for (const id of sliders) {
+  s[id].oninput = ()=>{ voiceParams[currentVoice][id] = Number(s[id].value); sv[id+"v"].textContent=s[id].value; };
+}
+
+/* ---------------------------- Editors (canvas) ---------------------------- */
+function drawWT(){
+  const ctx = wtCanvas.getContext('2d');
+  ctx.clearRect(0,0,wtCanvas.width, wtCanvas.height);
+  ctx.strokeStyle = '#2e89ff'; ctx.lineWidth=2;
+  ctx.beginPath();
+  for (let i=0;i<WT_SIZE;i++){
+    const x = i / (WT_SIZE-1) * wtCanvas.width;
+    const y = (1 - (customWT[i]*0.5+0.5)) * wtCanvas.height;
+    if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+}
+
+let draggingWT=false;
+wtCanvas.onmousedown = (e)=>{ draggingWT=true; setWTFromMouse(e); };
+wtCanvas.onmousemove = (e)=>{ if(draggingWT) setWTFromMouse(e); };
+wtCanvas.onmouseup   = ()=>{ draggingWT=false; };
+wtCanvas.onmouseleave= ()=>{ draggingWT=false; };
+
+function setWTFromMouse(e){
+  const rect = wtCanvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const idx = Math.round((x / rect.width) * (WT_SIZE-1));
+  const val = (1 - (y/rect.height))*2 - 1; // [-1..1]
+  if (idx>=0 && idx<WT_SIZE){ customWT[idx] = Math.max(-1, Math.min(1, val)); drawWT(); updateWorkletWT(); }
+}
+
+function drawEnv(){
+  const ctx = envCanvas.getContext('2d');
+  ctx.clearRect(0,0,envCanvas.width, envCanvas.height);
+  const pts = envPoints;
+  ctx.strokeStyle = '#72d572'; ctx.lineWidth=2;
+  ctx.beginPath();
+  for (let i=0;i<pts.length;i++){
+    const x = pts[i].x * envCanvas.width;
+    const y = (1-pts[i].y) * envCanvas.height;
+    if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+}
+
+let envPoints = defaultEnv(0);
+let draggingEnv = -1;
+envCanvas.onmousedown = (e)=>{ draggingEnv = pickEnvPoint(e); if(draggingEnv<0){ envPoints.push(pointFromMouse(e)); sortEnv(); drawEnv(); updateWorkletEnv(); } };
+envCanvas.onmousemove = (e)=>{ if(draggingEnv>=0){ envPoints[draggingEnv]=pointFromMouse(e); clampEnvPoint(envPoints[draggingEnv]); sortEnv(); drawEnv(); updateWorkletEnv(); } };
+envCanvas.onmouseup = ()=>{ draggingEnv=-1; };
+envCanvas.onmouseleave = ()=>{ draggingEnv=-1; };
+
+function pointFromMouse(e){
+  const rect = envCanvas.getBoundingClientRect();
+  return { x: Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width)), y: Math.max(0,Math.min(1,1-(e.clientY-rect.top)/rect.height)) };
+}
+function pickEnvPoint(e){
+  const p = pointFromMouse(e);
+  for (let i=0;i<envPoints.length;i++){
+    const dx = envPoints[i].x - p.x, dy = envPoints[i].y - p.y;
+    if (dx*dx+dy*dy < 0.01) return i;
+  }
+  return -1;
+}
+function clampEnvPoint(pt){ pt.x=Math.max(0,Math.min(1,pt.x)); pt.y=Math.max(0,Math.min(1,pt.y)); }
+function sortEnv(){ envPoints.sort((a,b)=>a.x-b.x); envPoints[0].x=0; envPoints[envPoints.length-1].x=1; }
+
+document.querySelectorAll('button[data-wt]').forEach(b=>{
+  b.onclick=()=>{
+    const t=b.getAttribute('data-wt');
+    if (t==='sine') customWT=genSine();
+    else if (t==='tri') customWT=genTri();
+    else if (t==='saw') customWT=genSaw();
+    else if (t==='square') customWT=genSquare();
+    else if (t==='noise') customWT=genNoise();
+    drawWT(); updateWorkletWT();
+  };
+});
+document.getElementById('useCustomWT').onclick = ()=>{ // использовать кастом для превью выбранного голоса
+  engine.setVoiceWT(currentVoice, customWT.slice());
+};
+
+document.querySelectorAll('button[data-env]').forEach(b=>{
+  b.onclick=()=>{
+    const t=b.getAttribute('data-env');
+    const idx = Number(t.replace('env',''));
+    envPoints = defaultEnv(idx);
+    drawEnv(); updateWorkletEnv();
+  };
+});
+document.getElementById('useCustomEnv').onclick = ()=>{
+  engine.setVoiceEnvCurve(currentVoice, envPoints.slice());
+};
+
+/* ---------------------------- Wave/Env generators ---------------------------- */
+function genSine(){ const a=new Float32Array(WT_SIZE); for(let i=0;i<WT_SIZE;i++) a[i]=Math.sin(2*Math.PI*i/WT_SIZE); return a; }
+function genTri(){ const a=new Float32Array(WT_SIZE); for(let i=0;i<WT_SIZE;i++){ const t=i/WT_SIZE; a[i]=1-4*Math.abs(Math.round(t-0.25)-(t-0.25)); } return a; }
+function genSaw(){ const a=new Float32Array(WT_SIZE); for(let i=0;i<WT_SIZE;i++){ a[i]=2*(i/WT_SIZE)-1; } return a; }
+function genSquare(){ const a=new Float32Array(WT_SIZE); for(let i=0;i<WT_SIZE;i++){ a[i]=(i<WT_SIZE/2)?1:-1; } return a; }
+function genNoise(){ const a=new Float32Array(WT_SIZE); for(let i=0;i<WT_SIZE;i++) a[i]=Math.random()*2-1; return a; }
+
+function defaultEnv(idx){
+  // 4 пресета, приблизительно: быстрый перкуссионный, средний, длинный, гейт
+  if (idx===0) return [{x:0,y:0},{x:.005,y:1},{x:.08,y:.2},{x:1,y:0}];
+  if (idx===1) return [{x:0,y:0},{x:.01,y:1},{x:.2,y:.6},{x:1,y:0}];
+  if (idx===2) return [{x:0,y:0},{x:.02,y:1},{x:.6,y:.8},{x:1,y:0}];
+  return [{x:0,y:1},{x:1,y:1}];
+}
+
+/* ---------------------------- Audio Engine (Worklet) ---------------------------- */
+class Engine {
+  async init(){
+    this.ac = new (window.AudioContext||window.webkitAudioContext)({ sampleRate: SR });
+    const code = `
+      class SynthProc extends AudioWorkletProcessor{
+        static get parameterDescriptors(){ return []; }
+        constructor(){
+          super();
+          this.SR = ${SR};
+          this.VOICES = ${VOICES};
+          this.WT_SIZE = ${WT_SIZE};
+          this.wt = Array.from({length:this.VOICES}, ()=>new Float32Array(${WT_SIZE}).fill(0));
+          this.envCurves = Array.from({length:this.VOICES}, ()=>[{x:0,y:1},{x:1,y:0}]);
+          this.phase = new Float32Array(this.VOICES);
+          this.ftw   = new Float32Array(this.VOICES).fill(0.002); // def
+          this.amp   = new Float32Array(this.VOICES).fill(0);
+          this.len   = new Float32Array(this.VOICES).fill(64);
+          this.mod   = new Float32Array(this.VOICES).fill(64);
+          this.vol   = new Float32Array(this.VOICES).fill(0.5);
+          this.pan   = new Float32Array(this.VOICES).fill(0);
+          this.filt  = new Float32Array(this.VOICES).fill(0);
+          this.envPos= new Float32Array(this.VOICES).fill(1);
+          this.trig  = new Uint8Array(this.VOICES).fill(0);
+          this.lp_z1L= new Float32Array(this.VOICES);
+          this.lp_z1R= new Float32Array(this.VOICES);
+          this.port.onmessage = (e)=>this.onmsg(e.data);
+        }
+        onmsg(m){
+          const t=m.type;
+          if (t==='setWT'){ this.wt[m.v].set(m.data); }
+          else if (t==='setCurve'){ this.envCurves[m.v]=m.data; }
+          else if (t==='setParams'){
+            const p=m.p; const v=m.v;
+            // pitch 0..127 → частота (примерное соответствие)
+            const freq = 440 * Math.pow(2,(p.pitch-69)/12);
+            this.ftw[v] = freq / this.SR;
+            this.len[v] = p.length; this.mod[v]=p.mod;
+            this.vol[v] = p.vol/31;
+            this.pan[v] = Math.max(-1, Math.min(1, p.pan/63));
+            this.filt[v]= p.filter/255;
+          } else if (t==='trigger'){ this.trig[m.v]=1; }
+        }
+        // быстрая огибающая по полилинии envCurves[v] с прогрессом 0..1
+        envAt(v, x){
+          const c=this.envCurves[v];
+          if (x<=0) return c[0].y; if (x>=1) return c[c.length-1].y;
+          for (let i=1;i<c.length;i++){
+            if (x<=c[i].x){
+              const t=(x-c[i-1].x)/(c[i].x-c[i-1].x);
+              return c[i-1].y + (c[i].y-c[i-1].y)*t;
+            }
+          }
+          return c[c.length-1].y;
+        }
+        process(inputs, outputs, params){
+          const outL = outputs[0][0];
+          const outR = outputs[0][1] || outputs[0][0];
+          outL.fill(0); outR.fill(0);
+          for (let i=0;i<outL.length;i++){
+            let L=0, R=0;
+            for (let v=0; v<this.VOICES; v++){
+              if (this.trig[v]){ this.envPos[v]=0; this.trig[v]=0; }
+              if (this.envPos[v]>1) continue;
+              // огибающая
+              const e = this.envAt(v, this.envPos[v]);
+              this.envPos[v] += (0.0005 + this.len[v]*0.00002); // скорость ≈ length
+              // фаза + WT
+              const ph = this.phase[v] = (this.phase[v] + this.ftw[v]) % 1;
+              const idx = Math.floor(ph * (this.WT_SIZE-1));
+              const a = this.wt[v][idx], b=this.wt[v][(idx+1)%this.WT_SIZE];
+              const frac = ph*this.WT_SIZE - idx;
+              const s = (a + (b-a)*frac) * e * this.vol[v];
+              // фильтр (грубо 1-pole LPF)
+              const cutoff = 0.02 + 0.48*this.filt[v];
+              this.lp_z1L[v] += cutoff * (s - this.lp_z1L[v]);
+              this.lp_z1R[v] += cutoff * (s - this.lp_z1R[v]);
+              const pan = (this.pan[v]+1)*0.5; // 0..1
+              L += this.lp_z1L[v]*(1-pan);
+              R += this.lp_z1R[v]*(pan);
+            }
+            outL[i]=L; outR[i]=R;
+          }
+          return true;
+        }
+      }
+      registerProcessor('synth-proc', SynthProc);
+    `;
+    const blob = new Blob([code], {type:'application/javascript'});
+    const url = URL.createObjectURL(blob);
+    await this.ac.audioWorklet.addModule(url);
+    this.node = new AudioWorkletNode(this.ac, 'synth-proc', { numberOfOutputs:1, outputChannelCount:[2] });
+    this.node.connect(this.ac.destination);
+    // init default WT & ENVs
+    for (let v=0; v<VOICES; v++){
+      this.setVoiceWT(v, genSine());
+      this.setVoiceEnvCurve(v, defaultEnv(0));
+      this.setVoiceParams(v, voiceParams[v]);
+    }
+  }
+  resume(){ return this.ac.resume(); }
+  setVoiceWT(v, arr){ this.node.port.postMessage({type:'setWT', v, data:Array.from(arr)}); }
+  setVoiceEnvCurve(v, pts){ this.node.port.postMessage({type:'setCurve', v, data:pts}); }
+  setVoiceParams(v, p){ this.node.port.postMessage({type:'setParams', v, p}); }
+  trigger(v){ this.node.port.postMessage({type:'trigger', v}); }
+}
+const engine = new Engine();
+await engine.init();
+
+document.getElementById('preview').onclick = async ()=>{
+  await engine.resume();
+  engine.setVoiceParams(currentVoice, voiceParams[currentVoice]);
+  engine.trigger(currentVoice);
+};
+
+document.getElementById('play').onclick = async ()=>{
+  await engine.resume();
+  if (playTimer) return;
+  let step=0;
+  playTimer = setInterval(()=>{
+    if (pattern[step]) { engine.setVoiceParams(currentVoice, voiceParams[currentVoice]); engine.trigger(currentVoice); }
+    step=(step+1)&15;
+  }, (60000/Number(document.getElementById('bpm').value))/4);
+};
+document.getElementById('stop').onclick = ()=>{ if (playTimer){ clearInterval(playTimer); playTimer=null; } };
+let playTimer=null;
+
+/* обновить WT/ENV процессору после редактирования */
+function updateWorkletWT(){ engine.setVoiceWT(currentVoice, customWT); }
+function updateWorkletEnv(){ engine.setVoiceEnvCurve(currentVoice, envPoints); }
+
+/* ---------------------------- Web Serial PUT /SNDx ---------------------------- */
+const serLog = (s)=>{ const el=document.getElementById('serlog'); el.textContent+=s+"\n"; el.scrollTop=el.scrollHeight; };
+let port, reader, writer;
+
+document.getElementById('connect').onclick = async ()=>{
+  if (!("serial" in navigator)) { alert("Web Serial не поддерживается"); return; }
+  port = await navigator.serial.requestPort();
+  await port.open({ baudRate: 115200 });
+  writer = port.writable.getWriter();
+  reader = port.readable.getReader();
+  serLog("Connected.");
+};
+
+async function sendLine(txt){
+  const enc = new TextEncoder();
+  await writer.write(enc.encode(txt+"\n"));
+}
+async function readLine(){
+  let text = "";
+  while (true){
+    const {value, done} = await reader.read();
+    if (done) break;
+    text += new TextDecoder().decode(value);
+    const i = text.indexOf("\n");
+    if (i>=0) return text.slice(0,i+1);
+  }
+  return text;
+}
+
+function makeSNDText(){
+  // Формат: 16 голосов * 8 строк: wave, env, length, pitch, mod, vol, pan, filter
+  let out=[];
+  for (let v=0; v<VOICES; v++){
+    const p = voiceParams[v];
+    out.push(
+      p.wave, p.env, p.length, p.pitch, p.mod, p.vol, p.pan, p.filter
+    );
+  }
+  return out.join("\n")+"\n";
+}
+
+document.getElementById('save').onclick = async ()=>{
+  if (!port){ alert("Сначала Connect"); return; }
+  const slot = Number(document.getElementById('slot').value)||0;
+  const path = `/SND${slot}`;
+  const txt = makeSNDText();
+  const bytes = new TextEncoder().encode(txt);
+  await sendLine(`PUT ${path} ${bytes.length}`);
+  const r1 = await readLine(); serLog(r1.trim());
+  // chunk write
+  const CH=1024;
+  for (let i=0;i<bytes.length;i+=CH){
+    await writer.write(bytes.slice(i, Math.min(i+CH, bytes.length)));
+  }
+  const r2 = await readLine(); serLog(r2.trim());
+  serLog(`Saved ${path} (${bytes.length} bytes).`);
+  serLog(`Note: прошивка должна вызывать load_sound(${slot}) или читать /SND${slot} при старте.`);
+};
+
+/* ---------------------------- Presets & helpers ---------------------------- */
+function applyPresetKick(v){
+  voiceParams[v] = { wave:2, env:0, length:40, pitch:36, mod:80, vol:28, pan:0, filter:30 };
+}
+function applyPresetSnare(v){
+  voiceParams[v] = { wave:12, env:1, length:60, pitch:72, mod:64, vol:26, pan:0, filter:10 };
+}
+function applyPresetHH(v){
+  voiceParams[v] = { wave:6, env:0, length:20, pitch:100, mod:90, vol:20, pan:10, filter:0 };
+}
+function applyPresetBass(v){
+  voiceParams[v] = { wave:0, env:2, length:90, pitch:36, mod:20, vol:28, pan:-5, filter:80 };
+}
+document.getElementById('preset-kick').onclick = ()=>{ applyPresetKick(currentVoice); syncUIFromVoice(); };
+document.getElementById('preset-snare').onclick= ()=>{ applyPresetSnare(currentVoice); syncUIFromVoice(); };
+document.getElementById('preset-hh').onclick   = ()=>{ applyPresetHH(currentVoice); syncUIFromVoice(); };
+document.getElementById('preset-bass').onclick  = ()=>{ applyPresetBass(currentVoice); syncUIFromVoice(); };
+</script>
+</body>
+</html>

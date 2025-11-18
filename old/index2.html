@@ -1,0 +1,311 @@
+<!-- File: web/previewer/index.html -->
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"/>
+<title>DrumBox — Browser Preview (No Device)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<style>
+  :root { --bg:#0b0d0f; --fg:#e8eaed; --mut:#97a1ab; --line:#232a31; --card:#121417; --acc:#72d5ff; }
+  *{box-sizing:border-box} html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial}
+  .wrap{max-width:1200px;margin:0 auto;padding:16px;display:grid;grid-template-columns:320px 1fr;gap:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
+  h2,h3{margin:.2rem 0 .6rem;font-weight:600}
+  button,input,select{background:#0f1215;color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+  button:hover{border-color:#2f3a45}
+  .grid16{display:grid;grid-template-columns:repeat(8,1fr);gap:6px}
+  .voice{padding:8px;text-align:center;background:#0e1114;border:1px solid var(--line);border-radius:12px;cursor:pointer;user-select:none}
+  .voice.active{outline:2px solid var(--acc)}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  label{color:var(--mut);font-size:12px;display:block;margin-top:8px}
+  .slider{display:flex;gap:8px;align-items:center}
+  .slider input[type=range]{width:220px}
+  .canv{background:#0c0e11;border:1px dashed #2a3440;border-radius:12px;width:100%;height:180px;display:block}
+  .notegrid{display:grid;grid-template-columns:repeat(16,1fr);gap:4px}
+  .step{height:24px;background:#0e1114;border:1px solid var(--line);border-radius:6px;cursor:pointer}
+  .step.on{background:#1c7c4f;border-color:#1f8a57}
+  .muted{color:#7e8b97}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h2>Voices</h2>
+    <div id="voices" class="grid16"></div>
+
+    <h3 style="margin-top:12px;">Pattern (Preview)</h3>
+    <div id="pattern" class="notegrid"></div>
+    <div class="row" style="margin-top:8px;">
+      <button id="play">Play</button>
+      <button id="stop">Stop</button>
+      <label>BPM <input id="bpm" type="number" min="40" max="240" value="120"></label>
+    </div>
+
+    <h3 style="margin-top:12px;">Record to WAV</h3>
+    <div class="row">
+      <button id="recStart">Start Rec</button>
+      <button id="recStop">Stop & Download</button>
+    </div>
+
+    <h3 style="margin-top:12px;">Export /SNDx (text)</h3>
+    <div class="row">
+      <button id="exportSND">Download SND.txt</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Voice Editor</h2>
+    <div class="row">
+      <div class="slider"><span class="muted">Wave</span><select id="waveSel"></select></div>
+      <div class="slider"><span class="muted">Env</span>
+        <select id="envSel"><option value="0">Env0</option><option value="1">Env1</option><option value="2">Env2</option><option value="3">Env3</option></select>
+      </div>
+      <button id="preview">Preview</button>
+    </div>
+
+    <div class="row" style="margin-top:8px;">
+      <div>
+        <label>WaveTable (edit)</label>
+        <canvas id="wtCanvas" class="canv" width="600" height="180"></canvas>
+        <div class="row" style="margin-top:6px;">
+          <button data-wt="sine">Sine</button>
+          <button data-wt="tri">Tri</button>
+          <button data-wt="saw">Saw</button>
+          <button data-wt="square">Square</button>
+          <button data-wt="noise">Noise</button>
+          <button id="useCustomWT">Use Custom</button>
+          <span class="muted">* В железе 14 предустановленных волн</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:8px;">
+      <div>
+        <label>Envelope (edit)</label>
+        <canvas id="envCanvas" class="canv" width="600" height="180"></canvas>
+        <div class="row" style="margin-top:6px;">
+          <button data-env="env0">Env0</button>
+          <button data-env="env1">Env1</button>
+          <button data-env="env2">Env2</button>
+          <button data-env="env3">Env3</button>
+          <button id="useCustomEnv">Use Custom</button>
+          <span class="muted">* На устройстве сейчас 4 огибающие</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:8px;">
+      <div class="slider"><span class="muted">Pitch</span><input id="pitch" type="range" min="0" max="127" value="60"><span id="pitchv"></span></div>
+      <div class="slider"><span class="muted">Length</span><input id="length" type="range" min="0" max="127" value="64"><span id="lengthv"></span></div>
+      <div class="slider"><span class="muted">Mod</span><input id="mod" type="range" min="0" max="127" value="64"><span id="modv"></span></div>
+      <div class="slider"><span class="muted">Vol</span><input id="vol" type="range" min="0" max="31" value="24"><span id="volv"></span></div>
+      <div class="slider"><span class="muted">Pan</span><input id="pan" type="range" min="-64" max="63" value="0"><span id="panv"></span></div>
+      <div class="slider"><span class="muted">Filter</span><input id="filter" type="range" min="0" max="255" value="0"><span id="filterv"></span></div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+/* --------------------------- Config / State --------------------------- */
+const SR=48000, VOICES=16, WT_SIZE=256;
+const WAVE_NAMES=["Sin","Tri","Square","Saw","Ramp","WN1","WN2","WN3","WN4","WN5","WN6","WN7","Noise","Phasor"];
+
+const voicesEl=document.getElementById('voices');
+const patternEl=document.getElementById('pattern');
+const waveSel=document.getElementById('waveSel');
+const envSel=document.getElementById('envSel');
+const wtCanvas=document.getElementById('wtCanvas');
+const envCanvas=document.getElementById('envCanvas');
+
+const sliders=["pitch","length","mod","vol","pan","filter"];
+const s=Object.fromEntries(sliders.map(id=>[id,document.getElementById(id)]));
+const sv=Object.fromEntries(sliders.map(id=>[id+"v",document.getElementById(id+"v")]));
+
+let currentVoice=0;
+const voiceParams=Array.from({length:VOICES},()=>({wave:0,env:0,length:64,pitch:60,mod:64,vol:24,pan:0,filter:0}));
+const pattern=new Array(16).fill(false);
+
+let customWT=genSine();
+let envPoints=defaultEnv(0);
+
+/* --------------------------- UI build --------------------------- */
+function buildVoices(){ voicesEl.innerHTML=""; for(let i=0;i<VOICES;i++){ const d=document.createElement('div'); d.className="voice"+(i===currentVoice?" active":""); d.textContent="V"+i; d.onclick=()=>{currentVoice=i;buildVoices();syncUI();}; voicesEl.appendChild(d);} }
+function buildPattern(){ patternEl.innerHTML=""; for(let i=0;i<16;i++){ const st=document.createElement('div'); st.className="step"+(pattern[i]?" on":""); st.onclick=()=>{ pattern[i]=!pattern[i]; st.classList.toggle("on");}; patternEl.appendChild(st);} }
+function buildWaveSel(){ waveSel.innerHTML=WAVE_NAMES.map((n,i)=>`<option value="${i}">${i}: ${n}</option>`).join(""); }
+function syncUI(){ const p=voiceParams[currentVoice]; waveSel.value=p.wave; envSel.value=p.env; s.pitch.value=p.pitch; sv.pitchv.textContent=p.pitch; s.length.value=p.length; sv.lengthv.textContent=p.length; s.mod.value=p.mod; sv.modv.textContent=p.mod; s.vol.value=p.vol; sv.volv.textContent=p.vol; s.pan.value=p.pan; sv.panv.textContent=p.pan; s.filter.value=p.filter; sv.filterv.textContent=p.filter; drawWT(); drawEnv(); }
+buildVoices(); buildPattern(); buildWaveSel(); syncUI();
+
+waveSel.onchange=()=>{ voiceParams[currentVoice].wave=Number(waveSel.value); engine.setVoiceParams(currentVoice,voiceParams[currentVoice]); };
+envSel.onchange=()=>{ voiceParams[currentVoice].env=Number(envSel.value); engine.setVoiceParams(currentVoice,voiceParams[currentVoice]); };
+for(const id of sliders){ s[id].oninput=()=>{ voiceParams[currentVoice][id]=Number(s[id].value); sv[id+"v"].textContent=s[id].value; engine.setVoiceParams(currentVoice,voiceParams[currentVoice]); }; }
+
+/* --------------------------- WaveTable editor --------------------------- */
+function drawWT(){ const ctx=wtCanvas.getContext('2d'); ctx.clearRect(0,0,wtCanvas.width,wtCanvas.height); ctx.strokeStyle='#2e89ff'; ctx.lineWidth=2; ctx.beginPath(); for(let i=0;i<WT_SIZE;i++){ const x=i/(WT_SIZE-1)*wtCanvas.width; const y=(1-(customWT[i]*0.5+0.5))*wtCanvas.height; if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.stroke(); }
+let dragWT=false;
+wtCanvas.onmousedown=e=>{ dragWT=true; setWT(e); };
+wtCanvas.onmousemove=e=>{ if(dragWT) setWT(e); };
+wtCanvas.onmouseup=()=>{ dragWT=false; };
+wtCanvas.onmouseleave=()=>{ dragWT=false; };
+function setWT(e){ const r=wtCanvas.getBoundingClientRect(); const x=e.clientX-r.left, y=e.clientY-r.top; const idx=Math.round((x/r.width)*(WT_SIZE-1)); const val=(1-(y/r.height))*2-1; if(idx>=0&&idx<WT_SIZE){ customWT[idx]=Math.max(-1,Math.min(1,val)); drawWT(); } }
+document.querySelectorAll('button[data-wt]').forEach(b=>{ b.onclick=()=>{ const t=b.getAttribute('data-wt'); customWT=(t==='sine')?genSine():(t==='tri')?genTri():(t==='saw')?genSaw():(t==='square')?genSquare():genNoise(); drawWT(); }; });
+document.getElementById('useCustomWT').onclick=()=>{ engine.setVoiceWT(currentVoice,customWT.slice()); };
+
+/* --------------------------- Envelope editor --------------------------- */
+function drawEnv(){ const ctx=envCanvas.getContext('2d'); ctx.clearRect(0,0,envCanvas.width,envCanvas.height); ctx.strokeStyle='#72d572'; ctx.lineWidth=2; const pts=envPoints; ctx.beginPath(); for(let i=0;i<pts.length;i++){ const x=pts[i].x*envCanvas.width; const y=(1-pts[i].y)*envCanvas.height; if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.stroke(); }
+let dragEnv=-1;
+envCanvas.onmousedown=e=>{ dragEnv=pickEnv(e); if(dragEnv<0){ envPoints.push(ptFrom(e)); sortEnv(); drawEnv(); } };
+envCanvas.onmousemove=e=>{ if(dragEnv>=0){ envPoints[dragEnv]=ptFrom(e); clampEnv(envPoints[dragEnv]); sortEnv(); drawEnv(); } };
+envCanvas.onmouseup=()=>{ dragEnv=-1; };
+envCanvas.onmouseleave=()=>{ dragEnv=-1; };
+function ptFrom(e){ const r=envCanvas.getBoundingClientRect(); return {x:Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)), y:Math.max(0,Math.min(1,1-(e.clientY-r.top)/r.height))}; }
+function pickEnv(e){ const p=ptFrom(e); for(let i=0;i<envPoints.length;i++){ const dx=envPoints[i].x-p.x, dy=envPoints[i].y-p.y; if(dx*dx+dy*dy<0.01) return i; } return -1; }
+function clampEnv(p){ p.x=Math.max(0,Math.min(1,p.x)); p.y=Math.max(0,Math.min(1,p.y)); }
+function sortEnv(){ envPoints.sort((a,b)=>a.x-b.x); envPoints[0].x=0; envPoints[envPoints.length-1].x=1; }
+document.querySelectorAll('button[data-env]').forEach(b=>{ b.onclick=()=>{ const idx=Number(b.getAttribute('data-env').replace('env','')); envPoints=defaultEnv(idx); drawEnv(); }; });
+document.getElementById('useCustomEnv').onclick=()=>{ engine.setVoiceEnvCurve(currentVoice,envPoints.slice()); };
+
+/* --------------------------- Generators --------------------------- */
+function genSine(){ const a=new Float32Array(WT_SIZE); for(let i=0;i<WT_SIZE;i++) a[i]=Math.sin(2*Math.PI*i/WT_SIZE); return a; }
+function genTri(){ const a=new Float32Array(WT_SIZE); for(let i=0;i<WT_SIZE;i++){ const t=i/WT_SIZE; a[i]=1-4*Math.abs(Math.round(t-0.25)-(t-0.25)); } return a; }
+function genSaw(){ const a=new Float32Array(WT_SIZE); for(let i=0;i<WT_SIZE;i++) a[i]=2*(i/WT_SIZE)-1; return a; }
+function genSquare(){ const a=new Float32Array(WT_SIZE); for(let i=0;i<WT_SIZE;i++) a[i]=(i<WT_SIZE/2)?1:-1; return a; }
+function genNoise(){ const a=new Float32Array(WT_SIZE); for(let i=0;i<WT_SIZE;i++) a[i]=Math.random()*2-1; return a; }
+function defaultEnv(idx){ if(idx===0) return [{x:0,y:0},{x:.005,y:1},{x:.08,y:.2},{x:1,y:0}]; if(idx===1) return [{x:0,y:0},{x:.01,y:1},{x:.2,y:.6},{x:1,y:0}]; if(idx===2) return [{x:0,y:0},{x:.02,y:1},{x:.6,y:.8},{x:1,y:0}]; return [{x:0,y:1},{x:1,y:1}]; }
+
+/* --------------------------- Audio Engine (Worklet) --------------------------- */
+class Engine{
+  async init(){
+    this.ac=new (window.AudioContext||window.webkitAudioContext)({sampleRate:SR});
+    const code=`
+      class SynthProc extends AudioWorkletProcessor{
+        constructor(){
+          super();
+          this.SR=${SR}; this.V=${VOICES}; this.N=${WT_SIZE};
+          this.wt=Array.from({length:this.V},()=>new Float32Array(${WT_SIZE}).fill(0));
+          this.curves=Array.from({length:this.V},()=>[{x:0,y:1},{x:1,y:0}]);
+          this.phase=new Float32Array(this.V);
+          this.ftw=new Float32Array(this.V).fill(0.002);
+          this.len=new Float32Array(this.V).fill(64);
+          this.mod=new Float32Array(this.V).fill(64);
+          this.vol=new Float32Array(this.V).fill(0.5);
+          this.pan=new Float32Array(this.V).fill(0);
+          this.filt=new Float32Array(this.V).fill(0);
+          this.envPos=new Float32Array(this.V).fill(1);
+          this.trig=new Uint8Array(this.V).fill(0);
+          this.lpL=new Float32Array(this.V);
+          this.lpR=new Float32Array(this.V);
+          this.port.onmessage=e=>this.onmsg(e.data);
+        }
+        onmsg(m){
+          if(m.t==='setWT'){ this.wt[m.v].set(m.a); }
+          else if(m.t==='setCurve'){ this.curves[m.v]=m.a; }
+          else if(m.t==='setParams'){
+            const p=m.p, v=m.v;
+            const freq=440*Math.pow(2,(p.pitch-69)/12);
+            this.ftw[v]=freq/this.SR;
+            this.len[v]=p.length; this.mod[v]=p.mod;
+            this.vol[v]=p.vol/31; this.pan[v]=Math.max(-1,Math.min(1,p.pan/63));
+            this.filt[v]=p.filter/255;
+          } else if(m.t==='trig'){ this.trig[m.v]=1; }
+        }
+        envAt(v,x){
+          const c=this.curves[v]; if(x<=0) return c[0].y; if(x>=1) return c[c.length-1].y;
+          for(let i=1;i<c.length;i++){ if(x<=c[i].x){ const t=(x-c[i-1].x)/(c[i].x-c[i-1].x); return c[i-1].y+(c[i].y-c[i-1].y)*t; } }
+          return c[c.length-1].y;
+        }
+        process(inputs,outputs){
+          const L=outputs[0][0], R=outputs[0][1]||outputs[0][0]; L.fill(0); R.fill(0);
+          for(let i=0;i<L.length;i++){
+            let l=0,r=0;
+            for(let v=0; v<this.V; v++){
+              if(this.trig[v]){ this.envPos[v]=0; this.trig[v]=0; }
+              if(this.envPos[v]>1) continue;
+              const e=this.envAt(v,this.envPos[v]);
+              this.envPos[v]+= (0.0005 + this.len[v]*0.00002);
+              const ph=this.phase[v]=(this.phase[v]+this.ftw[v])%1;
+              const idx=Math.floor(ph*(this.N-1)); const frac=ph*this.N-idx;
+              const a=this.wt[v][idx], b=this.wt[v][(idx+1)%this.N];
+              const s=(a+(b-a)*frac)*e*this.vol[v];
+              const cutoff=0.02+0.48*this.filt[v];
+              this.lpL[v]+=cutoff*(s-this.lpL[v]);
+              this.lpR[v]+=cutoff*(s-this.lpR[v]);
+              const pan=(this.pan[v]+1)*0.5;
+              l+=this.lpL[v]*(1-pan); r+=this.lpR[v]*(pan);
+            }
+            L[i]=l; R[i]=r;
+          }
+          return true;
+        }
+      }
+      registerProcessor('SynthProc', SynthProc);
+    `;
+    const blob=new Blob([code],{type:'application/javascript'});
+    const url=URL.createObjectURL(blob);
+    await this.ac.audioWorklet.addModule(url);
+    this.node=new AudioWorkletNode(this.ac,'SynthProc',{numberOfOutputs:1,outputChannelCount:[2]});
+    // Маршрутизация на рекордер
+    this.dest=this.ac.createMediaStreamDestination();
+    this.node.connect(this.dest);
+    this.node.connect(this.ac.destination);
+    for(let v=0;v<VOICES;v++){ this.setVoiceWT(v,genSine()); this.setVoiceEnvCurve(v,defaultEnv(0)); this.setVoiceParams(v,voiceParams[v]); }
+  }
+  resume(){ return this.ac.resume(); }
+  setVoiceWT(v,a){ this.node.port.postMessage({t:'setWT',v,a:Array.from(a)}); }
+  setVoiceEnvCurve(v,a){ this.node.port.postMessage({t:'setCurve',v,a}); }
+  setVoiceParams(v,p){ this.node.port.postMessage({t:'setParams',v,p}); }
+  trigger(v){ this.node.port.postMessage({t:'trig',v}); }
+}
+const engine=new Engine(); await engine.init();
+
+/* --------------------------- Preview & Pattern --------------------------- */
+document.getElementById('preview').onclick=async()=>{ await engine.resume(); engine.setVoiceParams(currentVoice,voiceParams[currentVoice]); engine.trigger(currentVoice); };
+
+let timer=null;
+document.getElementById('play').onclick=async()=>{ await engine.resume(); if(timer) return; let step=0; const period=(60000/Number(document.getElementById('bpm').value))/4; timer=setInterval(()=>{ if(pattern[step]){ engine.setVoiceParams(currentVoice,voiceParams[currentVoice]); engine.trigger(currentVoice); } step=(step+1)&15; }, period); };
+document.getElementById('stop').onclick=()=>{ if(timer){ clearInterval(timer); timer=null; } };
+
+/* --------------------------- Recording to WAV --------------------------- */
+let mediaRecorder=null, chunks=[];
+document.getElementById('recStart').onclick=async()=>{
+  await engine.resume();
+  chunks=[];
+  mediaRecorder=new MediaRecorder(engine.dest.stream);
+  mediaRecorder.ondataavailable=e=>{ if(e.data.size>0) chunks.push(e.data); };
+  mediaRecorder.onstop=()=>{
+    const blob=new Blob(chunks,{type:'audio/webm'}); // браузерный контейнер
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download='drumbox_preview.webm'; a.click();
+    URL.revokeObjectURL(url);
+  };
+  mediaRecorder.start();
+};
+document.getElementById('recStop').onclick=()=>{ if(mediaRecorder && mediaRecorder.state!=='inactive'){ mediaRecorder.stop(); } };
+
+/* --------------------------- Export SND.txt --------------------------- */
+function makeSNDText(){
+  const lines=[];
+  for(let v=0;v<VOICES;v++){
+    const p=voiceParams[v];
+    lines.push(p.wave, p.env, p.length, p.pitch, p.mod, p.vol, p.pan, p.filter);
+  }
+  return lines.join("\n")+"\n";
+}
+document.getElementById('exportSND').onclick=()=>{
+  const txt=makeSNDText();
+  const blob=new Blob([txt],{type:'text/plain'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download='SND.txt'; a.click();
+  URL.revokeObjectURL(url);
+};
+
+/* --------------------------- Events wiring --------------------------- */
+document.getElementById('preview').disabled=false;
+
+/* Helpers to reflect sliders immediately */
+for(const id of sliders){ s[id].dispatchEvent(new Event('input')); }
+
+/* --------------------------- DONE --------------------------- */
+</script>
+</body>
+</html>
