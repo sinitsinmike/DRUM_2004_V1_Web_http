@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"/>
+<title>DrumBox Editor • Librarian • Device</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<link rel="manifest" href="data:application/manifest+json,{&quot;name&quot;:&quot;DrumBox Editor&quot;,&quot;short_name&quot;:&quot;DrumBox&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;start_url&quot;:&quot;.&quot;,&quot;background_color&quot;:&quot;#0b0d0f&quot;,&quot;theme_color&quot;:&quot;#0b0d0f&quot;}">
+<style>
+:root{--bg:#0b0d0f;--fg:#e8eaed;--mut:#97a1ab;--line:#232a31;--card:#121417;--acc:#72d5ff;--ok:#1f8a57;--warn:#cc8f00;--err:#d33}
+*{box-sizing:border-box} html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial}
+.wrap{max-width:1400px;margin:0 auto;padding:16px;display:grid;grid-template-columns:280px 1fr 360px;gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
+h2,h3{margin:.2rem 0 .6rem;font-weight:600}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.btn{background:#0f1215;color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px 12px;cursor:pointer;user-select:none;transition:background .12s,border-color .12s,transform .02s,box-shadow .12s}
+.btn:hover{border-color:#2f3a45}
+.btn:active,.btn.pressed{transform:translateY(1px);box-shadow:inset 0 0 0 999px rgba(255,255,255,.03)}
+.btn.on{border-color:var(--acc);box-shadow:0 0 0 2px rgba(114,213,255,.2) inset}
+.btn.ok.on{border-color:var(--ok);box-shadow:0 0 0 2px rgba(31,138,87,.25) inset}
+.btn.warn.on{border-color:var(--warn);box-shadow:0 0 0 2px rgba(204,143,0,.25) inset}
+.btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+select.btn{padding:6px 8px}
+.status{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.pill{padding:4px 8px;border-radius:999px;border:1px solid var(--line);background:#0e1114}
+.pill.ok{border-color:var(--ok)} .pill.warn{border-color:var(--warn)} .pill.err{border-color:var(--err)}
+.log{height:180px;overflow:auto;background:#0b0d10;border:1px solid #222a33;border-radius:10px;padding:8px;white-space:pre-wrap;font-family:ui-monospace,Menlo,Consolas,monospace}
+
+/* Voices bar */
+.voices{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px}
+.vbtn{position:relative;padding:10px 10px 26px;text-align:center;background:#0e1114;border:1px solid var(--line);border-radius:12px;cursor:pointer;user-select:none}
+.vbtn.active{outline:2px solid var(--acc)}
+.vname{font-weight:600}
+.vtag{position:absolute;left:8px;bottom:6px;font-size:11px;color:var(--mut)}
+.vmeter{position:absolute;right:6px;bottom:6px;height:10px;width:40px;border:1px solid #2a3440;border-radius:6px;overflow:hidden}
+.vmeter>span{display:block;height:100%;width:0;background:linear-gradient(90deg,#194b7a,#2e89ff)}
+
+/* Poly meter */
+.poly{padding:6px 8px;border:1px dashed #2a3440;border-radius:10px;display:flex;align-items:center;gap:8px}
+.polybar{flex:1;height:8px;background:#0e1114;border:1px solid #2a3440;border-radius:6px;overflow:hidden}
+.polybar>span{display:block;height:100%;width:0;background:linear-gradient(90deg,#1f8a57,#29c778)}
+
+/* Pattern */
+.notegrid{display:grid;grid-template-columns:repeat(16,1fr);gap:4px;margin-top:6px}
+.step{height:24px;background:#0e1114;border:1px solid var(--line);border-radius:6px;cursor:pointer}
+.step.on{background:#1c7c4f;border-color:#1f8a57}
+.step.play{outline:2px solid var(--acc)}
+
+/* Editor canvases */
+.canv{background:#0c0e11;border:1px dashed #2a3440;border-radius:12px;width:100%;height:180px;display:block}
+.muted{color:#7e8b97}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.slider{display:flex;gap:8px;align-items:center}
+.slider input[type=range]{width:220px}
+.kv{display:grid;grid-template-columns:110px 1fr;gap:8px;align-items:center}
+
+/* Librarian list */
+.list{max-height:220px;overflow:auto;border:1px solid #222a33;border-radius:10px}
+.item{padding:8px;border-bottom:1px solid #222a33;display:flex;justify-content:space-between;align-items:center}
+.item:last-child{border-bottom:none}
+.small{font-size:12px;color:var(--mut)}
+input[type=text]{background:#0f1215;color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- Left: System + Voices -->
+  <div class="card" id="left">
+    <h2>System</h2>
+    <div class="status">
+      <span id="st-ac" class="pill">AC: —</span>
+      <span id="st-worklet" class="pill">Worklet: —</span>
+      <span id="st-secure" class="pill">Context: —</span>
+      <span id="st-poly" class="pill">Poly: 0/16</span>
+    </div>
+    <div class="poly"><div class="polybar"><span id="polybar"></span></div><span class="small" id="polytext">0</span></div>
+    <div class="row" style="margin-top:8px;">
+      <button id="unlock" class="btn ok">Unlock Audio</button>
+      <button id="testTone" class="btn">Test Tone</button>
+      <button id="debug" class="btn">Debug</button>
+    </div>
+    <div id="syslog" class="log" style="margin-top:8px;"></div>
+
+    <h3 style="margin-top:12px;">Voices (16)</h3>
+    <div class="row">
+      <button id="follow" class="btn">Follow Live</button>
+      <button id="solo" class="btn">Solo Off</button>
+    </div>
+    <div class="voices" id="voices"></div>
+  </div>
+
+  <!-- Middle: Editor + Pattern + Song -->
+  <div class="card" id="mid">
+    <h2 id="vtitle">Voice Editor — V0</h2>
+    <div class="row">
+      <div class="kv"><span class="muted">Wave</span><select id="waveSel" class="btn"></select></div>
+      <div class="kv"><span class="muted">Env</span>
+        <select id="envSel" class="btn">
+          <option value="0">Env0</option><option value="1">Env1</option><option value="2">Env2</option><option value="3">Env3</option>
+        </select>
+      </div>
+      <button id="preview" class="btn">Preview V0</button>
+    </div>
+
+    <div class="grid2" style="margin-top:8px;">
+      <div>
+        <label>WaveTable (edit)</label>
+        <canvas id="wtCanvas" class="canv" width="600" height="180"></canvas>
+        <div class="row" style="margin-top:6px;">
+          <button data-wt="sine"   class="btn">Sine</button>
+          <button data-wt="tri"    class="btn">Tri</button>
+          <button data-wt="saw"    class="btn">Saw</button>
+          <button data-wt="square" class="btn">Square</button>
+          <button data-wt="noise"  class="btn">Noise</button>
+          <button id="useCustomWT" class="btn ok">Use Custom</button>
+        </div>
+      </div>
+      <div>
+        <label>Envelope (edit)</label>
+        <canvas id="envCanvas" class="canv" width="600" height="180"></canvas>
+        <div class="row" style="margin-top:6px;">
+          <button data-env="env0" class="btn">Env0</button>
+          <button data-env="env1" class="btn">Env1</button>
+          <button data-env="env2" class="btn">Env2</button>
+          <button data-env="env3" class="btn">Env3</button>
+          <button id="useCustomEnv" class="btn ok">Use Custom</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:8px;flex-wrap:wrap">
+      <div class="slider"><span class="muted">Pitch</span><input id="pitch" type="range" min="0" max="127" value="60"><span id="pitchv"></span></div>
+      <div class="slider"><span class="muted">Length</span><input id="length" type="range" min="0" max="127" value="64"><span id="lengthv"></span></div>
+      <div class="slider"><span class="muted">Mod</span><input id="mod" type="range" min="0" max="127" value="64"><span id="modv"></span></div>
+      <div class="slider"><span class="muted">Vol</span><input id="vol" type="range" min="0" max="31" value="24"><span id="volv"></span></div>
+      <div class="slider"><span class="muted">Pan</span><input id="pan" type="range" min="-64" max="63" value="0"><span id="panv"></span></div>
+      <div class="slider"><span class="muted">Filter</span><input id="filter" type="range" min="0" max="255" value="110"><span id="filterv"></span></div>
+    </div>
+
+    <h3 style="margin-top:14px;">Pattern (all voices)</h3>
+    <div id="pattern" class="notegrid"></div>
+    <div class="row" style="margin-top:8px;">
+      <button id="play" class="btn">Play</button>
+      <button id="stop" class="btn">Stop</button>
+      <label>BPM <input id="bpm" type="number" min="40" max="240" value="120"></label>
+      <span class="muted">Step: <span id="stepidx">—</span></span>
+    </div>
+
+    <h3 style="margin-top:14px;">Song</h3>
+    <div class="row">
+      <input id="songName" type="text" placeholder="Song name" style="flex:1"/>
+      <button id="songClear" class="btn">Clear</button>
+      <button id="songAdd" class="btn">Add Pattern</button>
+    </div>
+    <div id="songView" class="list" style="margin-top:8px"></div>
+  </div>
+
+  <!-- Right: Librarian + Device -->
+  <div class="card" id="right">
+    <h2>Librarian</h2>
+    <div class="row">
+      <input id="patchName" type="text" placeholder="Patch name" style="flex:1"/>
+      <button id="savePatch" class="btn ok">Save Patch</button>
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <button id="saveBank" class="btn">Save Bank</button>
+      <button id="loadFactory" class="btn">Restore Factory</button>
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <button id="exportBank" class="btn">Export JSON</button>
+      <input id="importFile" type="file" accept=".json" style="display:none"/>
+      <button id="importBank" class="btn">Import JSON</button>
+    </div>
+    <h3 style="margin-top:10px;">Library</h3>
+    <div id="libList" class="list"></div>
+
+    <h2 style="margin-top:16px;">Device</h2>
+    <div class="row">
+      <button id="connect" class="btn">Connect</button>
+      <button id="disconnect" class="btn">Disconnect</button>
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <label class="kv"><span class="muted">SND slot</span><input id="sndSlot" type="number" min="0" max="99" value="0"/></label>
+      <button id="sendSND" class="btn">Send SND</button>
+      <button id="readSND" class="btn">Read SND</button>
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <label class="kv"><span class="muted">PAT slot</span><input id="patSlot" type="number" min="0" max="99" value="0"/></label>
+      <button id="sendPAT" class="btn">Send PAT</button>
+      <button id="readPAT" class="btn">Read PAT</button>
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <label class="kv"><span class="muted">SON slot</span><input id="sonSlot" type="number" min="0" max="99" value="0"/></label>
+      <button id="sendSON" class="btn">Send SON</button>
+      <button id="readSON" class="btn">Read SON</button>
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <button id="loadOnDevice" class="btn">LOADSND</button>
+      <button id="listFS" class="btn">LS</button>
+    </div>
+    <div id="devlog" class="log" style="margin-top:8px;height:160px"></div>
+  </div>
+</div>
+
+<script>
+/* ---------- utils: logs, pills, pressed visuals ---------- */
+const $ = sel => document.querySelector(sel);
+const syslog = $('#syslog'), devlog = $('#devlog');
+const logSys = (...a)=>{ console.log('[SYS]',...a); syslog.textContent += a.join(' ') + '\n'; syslog.scrollTop=syslog.scrollHeight; };
+const logDev = (...a)=>{ console.log('[DEV]',...a); devlog.textContent += a.join(' ') + '\n'; devlog.scrollTop=devlog.scrollHeight; };
+const stAC=$('#st-ac'), stW=$('#st-worklet'), stCtx=$('#st-secure'), stPoly=$('#st-poly'), polybar=$('#polybar'), polytext=$('#polytext');
+const setPill=(el,txt,cls)=>{ el.textContent=txt; el.className='pill '+(cls||''); };
+const pressedWire=(root=document)=>root.querySelectorAll('.btn').forEach(b=>{
+  b.addEventListener('pointerdown',()=>b.classList.add('pressed'));
+  const off=()=>b.classList.remove('pressed'); b.addEventListener('pointerup',off); b.addEventListener('pointerleave',off); b.addEventListener('blur',off);
+});
+const toggleBtn=(el,on)=>{ el.classList.toggle('on',!!on); el.setAttribute('aria-pressed',on?'true':'false'); };
+pressedWire();
+setPill(stCtx,(location.protocol==='https:'||location.hostname==='localhost')?'Context: secure':'Context: not secure',(location.protocol==='https:'||location.hostname==='localhost')?'ok':'warn');
+
+/* ---------- constants / state ---------- */
+const SR=48000, VOICES=16, WT_SIZE=256;
+const COLORS = Array.from({length:VOICES},(_,i)=> i<8?`hsl(${160+i*4},60%,45%)`:`hsl(${210+(i-8)*6},60%,55%)`);
+const WAVE_NAMES=["Sin","Tri","Square","Saw","Ramp","WN1","WN2","WN3","WN4","WN5","WN6","WN7","Noise","Phasor"];
+const state = {
+  current:0, follow:false, solo:false,
+  voice: Array.from({length:VOICES},()=>({wave:0,env:0,length:64,pitch:60,mod:64,vol:24,pan:0,filter:110})),
+  pattern: Array.from({length:VOICES},()=>Array(16).fill(false)),
+  song: [],
+  meters: new Array(VOICES).fill(0),
+  poly:0
+};
+
+/* ---------- build UI: voices, pattern, selectors ---------- */
+const voicesEl = $('#voices'), patternEl = $('#pattern'), stepidxEl=$('#stepidx'), vtitle=$('#vtitle'), waveSel=$('#waveSel'), envSel=$('#envSel');
+waveSel.innerHTML = WAVE_NAMES.map((n,i)=>`<option value="${i}">${i}: ${n}</option>`).join('');
+function buildVoices(){
+  voicesEl.innerHTML='';
+  for(let v=0; v<VOICES; v++){
+    const d=document.createElement('div'); d.className='vbtn'; d.dataset.v=v;
+    d.innerHTML = `<div class="vname" style="color:${COLORS[v]}">V${v}</div><div class="vtag">${v<8?'Drum':'Melodic'}</div><div class="vmeter"><span></span></div>`;
+    if (v===state.current) d.classList.add('active');
+    d.onclick=()=>setCurrent(v);
+    voicesEl.appendChild(d);
+  }
+}
+function refreshVoiceTitle(){
+  vtitle.textContent = `Voice Editor — V${state.current}`;
+  $('#preview').textContent = `Preview V${state.current}`;
+  waveSel.value = state.voice[state.current].wave;
+  envSel.value  = state.voice[state.current].env;
+  ['pitch','length','mod','vol','pan','filter'].forEach(k=>{
+    $('#'+k).value = state.voice[state.current][k]; $('#'+k+'v').textContent = state.voice[state.current][k];
+  });
+}
+function setCurrent(v){
+  state.current=v; voicesEl.querySelectorAll('.vbtn').forEach((n,i)=>n.classList.toggle('active', i===v));
+  refreshVoiceTitle(); drawWT(); drawEnv(); renderPattern(); engineSetParams(v);
+}
+
+/* ---------- pattern UI ---------- */
+function renderPattern(){
+  patternEl.innerHTML='';
+  for(let i=0;i<16;i++){
+    const st=document.createElement('div'); st.className='step'; if(state.pattern[state.current][i]) st.classList.add('on');
+    st.style.borderColor = COLORS[state.current];
+    st.onclick=()=>{ state.pattern[state.current][i]=!state.pattern[state.current][i]; st.classList.toggle('on', state.pattern[state.current][i]); };
+    patternEl.appendChild(st);
+  }
+}
+
+/* ---------- song UI ---------- */
+const songView=$('#songView'); const songName=$('#songName');
+function renderSong(){
+  songView.innerHTML='';
+  state.song.forEach((p,idx)=>{
+    const row=document.createElement('div'); row.className='item';
+    row.innerHTML=`<div>#${idx+1} • Pattern ${p}</div><div class="row"><button class="btn" data-act="up">↑</button><button class="btn" data-act="down">↓</button><button class="btn" data-act="del">✕</button></div>`;
+    row.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+      const a=b.dataset.act;
+      if(a==='up'&&idx>0){ [state.song[idx-1],state.song[idx]]=[state.song[idx],state.song[idx-1]]; }
+      if(a==='down'&&idx<state.song.length-1){ [state.song[idx+1],state.song[idx]]=[state.song[idx],state.song[idx+1]]; }
+      if(a==='del'){ state.song.splice(idx,1); }
+      renderSong();
+    });
+    songView.appendChild(row);
+  });
+}
+$('#songAdd').onclick=()=>{ state.song.push(state.current); renderSong(); };
+$('#songClear').onclick=()=>{ state.song=[]; renderSong(); };
+
+/* ---------- WT / ENV editors ---------- */
+const wtCanvas=$('#wtCanvas'), envCanvas=$('#envCanvas');
+let customWT = genSine(); let envPoints = defaultEnv(0);
+function drawWT(){
+  const ctx=wtCanvas.getContext('2d'); ctx.clearRect(0,0,wtCanvas.width,wtCanvas.height); ctx.strokeStyle=COLORS[state.current]; ctx.lineWidth=2;
+  ctx.beginPath(); for(let i=0;i<WT_SIZE;i++){const x=i/(WT_SIZE-1)*wtCanvas.width; const y=(1-(customWT[i]*0.5+0.5))*wtCanvas.height; if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.stroke();
+}
+let dragWT=false; wtCanvas.onmousedown=e=>{dragWT=true; setWT(e)}; wtCanvas.onmousemove=e=>{if(dragWT)setWT(e)}; wtCanvas.onmouseup=()=>dragWT=false; wtCanvas.onmouseleave=()=>dragWT=false;
+function setWT(e){ const r=wtCanvas.getBoundingClientRect(); const x=e.clientX-r.left, y=e.clientY-r.top; const idx=Math.round((x/r.width)*(WT_SIZE-1)); const val=(1-(y/r.height))*2-1; if(idx>=0&&idx<WT_SIZE){ customWT[idx]=Math.max(-1,Math.min(1,val)); drawWT(); } }
+document.querySelectorAll('button[data-wt]').forEach(b=>b.onclick=()=>{ const t=b.getAttribute('data-wt'); customWT = t==='sine'?genSine():t==='tri'?genTri():t==='saw'?genSaw():t==='square'?genSquare():genNoise(); drawWT(); });
+$('#useCustomWT').onclick=()=>{ engineSetWT(state.current, customWT); flash($('#useCustomWT')); };
+
+function drawEnv(){ const ctx=envCanvas.getContext('2d'); ctx.clearRect(0,0,envCanvas.width,envCanvas.height); ctx.strokeStyle=COLORS[state.current]; ctx.lineWidth=2;
+  ctx.beginPath(); for(let i=0;i<envPoints.length;i++){ const x=envPoints[i].x*envCanvas.width, y=(1-envPoints[i].y)*envCanvas.height; if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.stroke(); }
+let dragEnv=-1;
+envCanvas.onmousedown=e=>{ dragEnv=pickEnv(e); if(dragEnv<0){ envPoints.push(ptFrom(e)); sortEnv(); drawEnv(); } };
+envCanvas.onmousemove=e=>{ if(dragEnv>=0){ envPoints[dragEnv]=ptFrom(e); clampEnv(envPoints[dragEnv]); sortEnv(); drawEnv(); } };
+envCanvas.onmouseup=()=>dragEnv=-1; envCanvas.onmouseleave=()=>dragEnv=-1;
+document.querySelectorAll('button[data-env]').forEach(b=>b.onclick=()=>{ const idx=Number(b.getAttribute('data-env').replace('env','')); envPoints=defaultEnv(idx); drawEnv(); });
+$('#useCustomEnv').onclick=()=>{ engineSetEnv(state.current, envPoints); flash($('#useCustomEnv')); };
+
+function ptFrom(e){ const r=envCanvas.getBoundingClientRect(); return {x:Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)), y:Math.max(0,Math.min(1,1-(e.clientY-r.top)/r.height))}; }
+function pickEnv(e){ const p=ptFrom(e); for(let i=0;i<envPoints.length;i++){ const dx=envPoints[i].x-p.x, dy=envPoints[i].y-p.y; if(dx*dx+dy*dy<0.01) return i; } return -1; }
+function clampEnv(p){ p.x=Math.max(0,Math.min(1,p.x)); p.y=Math.max(0,Math.min(1,p.y)); } function sortEnv(){ envPoints.sort((a,b)=>a.x-b.x); envPoints[0].x=0; envPoints[envPoints.length-1].x=1; }
+
+/* ---------- sliders & selects ---------- */
+['pitch','length','mod','vol','pan','filter'].forEach(k=>{
+  $('#'+k).oninput = ()=>{ state.voice[state.current][k]=Number($('#'+k).value); $('#'+k+'v').textContent=$('#'+k).value; engineSetParams(state.current); };
+});
+waveSel.onchange=()=>{ state.voice[state.current].wave=Number(waveSel.value); // для превью: подменяем WT при некоторых типах
+  const map={0:genSine,1:genTri,2:genSquare,3:genSaw,12:genNoise}; if(map[state.voice[state.current].wave]){ customWT = map[state.voice[state.current].wave](); drawWT(); engineSetWT(state.current, customWT); }
+  engineSetParams(state.current);
+};
+envSel.onchange = ()=>{ state.voice[state.current].env=Number(envSel.value); engineSetParams(state.current); };
+
+/* ---------- Audio Engine (Worklet) ---------- */
+let engine=null;
+class Engine{
+  constructor(){ this.ac=null; this.node=null; this.master=null; this.dest=null; this.worklet=false; this.levels=new Array(VOICES).fill(0); this.poly=0; }
+  async init(){
+    this.ac=new (window.AudioContext||window.webkitAudioContext)({sampleRate:SR});
+    setPill(stAC, `AC: ${this.ac.state}`, this.ac.state==='running'?'ok':'warn');
+    const code=`
+      class SynthProc extends AudioWorkletProcessor{
+        constructor(){ super();
+          this.SR=${SR}; this.V=${VOICES}; this.N=${WT_SIZE};
+          this.wt=Array.from({length:this.V},()=>new Float32Array(${WT_SIZE}).fill(0));
+          this.cv=Array.from({length:this.V},()=>[{x:0,y:1},{x:1,y:0}]);
+          this.phase=new Float32Array(this.V);
+          this.ftw=new Float32Array(this.V).fill(0.002);
+          this.len=new Float32Array(this.V).fill(64);
+          this.mod=new Float32Array(this.V).fill(64);
+          this.vol=new Float32Array(this.V).fill(0.5);
+          this.pan=new Float32Array(this.V).fill(0);
+          this.flt=new Float32Array(this.V).fill(0.4);
+          this.envPos=new Float32Array(this.V).fill(1);
+          this.trig=new Uint8Array(this.V).fill(0);
+          this.lpL=new Float32Array(this.V); this.lpR=new Float32Array(this.V);
+          this.level=new Float32Array(this.V); this.tick=0;
+          this.port.onmessage=e=>this.onmsg(e.data);
+        }
+        onmsg(m){
+          if(m.t==='setWT'){ this.wt[m.v].set(m.a); }
+          else if(m.t==='setCurve'){ this.cv[m.v]=m.a; }
+          else if(m.t==='setParams'){ const p=m.p, v=m.v; const f=440*Math.pow(2,(p.pitch-69)/12); this.ftw[v]=f/this.SR; this.len[v]=p.length; this.mod[v]=p.mod; this.vol[v]=p.vol/31; this.pan[v]=Math.max(-1,Math.min(1,p.pan/63)); this.flt[v]=p.filter/255; }
+          else if(m.t==='trig'){ this.trig[m.v]=1; }
+          else if(m.t==='initWT'){ for(let v=0;v<this.V;v++){ this.wt[v].set(m.arr); } }
+          else if(m.t==='initEnv'){ for(let v=0;v<this.V;v++){ this.cv[v]=m.curve; } }
+        }
+        envAt(v,x){ const c=this.cv[v]; if(x<=0) return c[0].y; if(x>=1) return c[c.length-1].y; for(let i=1;i<c.length;i++){ if(x<=c[i].x){ const t=(x-c[i-1].x)/(c[i].x-c[i-1].x); return c[i-1].y+(c[i].y-c[i-1].y)*t; } } return c[c.length-1].y; }
+        process(_,outs){
+          const L=outs[0][0], R=outs[0][1]||outs[0][0]; L.fill(0); R.fill(0); let poly=0;
+          for(let i=0;i<L.length;i++){
+            let l=0,r=0;
+            for(let v=0; v<this.V; v++){
+              if(this.trig[v]){ this.envPos[v]=0; this.trig[v]=0; }
+              if(this.envPos[v]<=1) poly++;
+              const e=this.envAt(v,this.envPos[v]); this.envPos[v]+= (0.0005 + this.len[v]*0.00002);
+              const ph=this.phase[v]=(this.phase[v]+this.ftw[v])%1;
+              const idx=Math.floor(ph*(this.N-1)); const frac=ph*this.N-idx;
+              const a=this.wt[v][idx], b=this.wt[v][(idx+1)%this.N];
+              const s=(a+(b-a)*frac)*e*this.vol[v];
+              const c=0.02+0.48*this.flt[v];
+              this.lpL[v]+=c*(s-this.lpL[v]); this.lpR[v]+=c*(s-this.lpR[v]);
+              const pan=(this.pan[v]+1)*0.5;
+              const sl=this.lpL[v]*(1-pan), sr=this.lpR[v]*pan;
+              l+=sl; r+=sr;
+              const abs=Math.abs((sl+sr)*0.5); this.level[v]+=0.05*(abs - this.level[v]);
+            }
+            L[i]=l; R[i]=r;
+          }
+          if((this.tick=(this.tick+1)%8)===0){ this.port.postMessage({levels:Array.from(this.level), poly}); }
+          return true;
+        }
+      }
+      registerProcessor('SynthProc', SynthProc);
+    `;
+    const blob=new Blob([code],{type:'application/javascript'}); const url=URL.createObjectURL(blob);
+    await this.ac.audioWorklet.addModule(url);
+    this.node=new AudioWorkletNode(this.ac,'SynthProc',{numberOfOutputs:1,outputChannelCount:[2]});
+    this.master=this.ac.createGain(); this.master.gain.value=0.9; this.node.connect(this.master); this.master.connect(this.ac.destination);
+    this.dest=this.ac.createMediaStreamDestination(); this.master.connect(this.dest);
+    this.node.port.onmessage = (e)=>{ const d=e.data; if(d.levels){ state.meters=d.levels; state.poly=d.poly; updateMeters(); } };
+    this.worklet=true; setPill(stW,'Worklet: ready','ok'); logSys('AudioWorklet ready');
+
+    // начальная WT/ENV/params
+    const initWT = genSine(); this.node.port.postMessage({t:'initWT',arr:Array.from(initWT)});
+    const initEnv = defaultEnv(0); this.node.port.postMessage({t:'initEnv',curve:initEnv});
+    for(let v=0; v<VOICES; v++){ engineSetParams(v); }
+  }
+  async resume(){ if(this.ac.state!=='running'){ await this.ac.resume(); setPill(stAC, `AC: ${this.ac.state}`, this.ac.state==='running'?'ok':'warn'); logSys('AC resume ->', this.ac.state); } }
+  setWT(v,a){ this.node.port.postMessage({t:'setWT',v,a:Array.from(a)}); }
+  setEnv(v,pts){ this.node.port.postMessage({t:'setCurve',v,a:pts}); }
+  setParams(v,p){ this.node.port.postMessage({t:'setParams',v,p}); }
+  trig(v){ this.node.port.postMessage({t:'trig',v}); }
+}
+function updateMeters(){
+  const vb=voicesEl.querySelectorAll('.vbtn');
+  vb.forEach((el,i)=>{ const w=el.querySelector('.vmeter>span'); const val=Math.max(0,Math.min(1,state.meters[i]*3)); w.style.width=(val*100).toFixed(1)+'%'; });
+  setPill(stPoly, `Poly: ${state.poly}/${VOICES}`, state.poly>0?'ok':'');
+  polybar.style.width = Math.min(100, (state.poly/VOICES)*100)+'%'; polytext.textContent=state.poly;
+}
+
+/* ---------- engine helpers ---------- */
+function engineSetWT(v, arr){ if(engine?.worklet){ engine.setWT(v,arr); } }
+function engineSetEnv(v, pts){ if(engine?.worklet){ engine.setEnv(v,pts); } }
+function engineSetParams(v){ if(engine?.worklet){ engine.setParams(v, state.voice[v]); } }
+
+/* ---------- Playback ---------- */
+let timer=null, step=0;
+$('#play').onclick=async()=>{ await unlockAudio(); if(timer) return; const period=(60000/Number($('#bpm').value))/4;
+  timer=setInterval(()=>{ step=(step+1)&15; stepidxEl.textContent=String(step+1); patternEl.querySelectorAll('.step').forEach((n,i)=>n.classList.toggle('play', i===step));
+    for(let v=0; v<VOICES; v++){ if(state.pattern[v][step]) engine.trig(v); }
+    if(state.follow){ // follow-live на ближайший активный
+      for(let v=0; v<VOICES; v++){ if(state.pattern[v][step]){ setCurrent(v); break; } }
+    }
+  }, period);
+  toggleBtn($('#play'),true);
+};
+$('#stop').onclick=()=>{ if(timer){ clearInterval(timer); timer=null; } toggleBtn($('#play'),false); stepidxEl.textContent='—'; patternEl.querySelectorAll('.step').forEach(n=>n.classList.remove('play')); };
+$('#preview').onclick=async()=>{ await unlockAudio(); engine.trig(state.current); flash($('#preview')); };
+
+/* ---------- follow / solo ---------- */
+$('#follow').onclick=()=>{ state.follow=!state.follow; toggleBtn($('#follow'), state.follow); };
+$('#solo').onclick=()=>{ state.solo=!state.solo; $('#solo').textContent = state.solo?'Solo On':'Solo Off'; toggleBtn($('#solo'),state.solo); /* для краткости: не глушим другие, оставим флаг на будущее */ };
+
+/* ---------- unlock / test / debug ---------- */
+async function unlockAudio(){ if(!engine){ engine=new Engine(); await engine.init(); } await engine.resume(); toggleBtn($('#unlock'),true); setTimeout(()=>toggleBtn($('#unlock'),false),150); }
+document.addEventListener('pointerdown', unlockAudio, { once:true });
+$('#unlock').onclick=unlockAudio;
+$('#testTone').onclick=async()=>{ await unlockAudio(); const ac=engine.ac; const o=ac.createOscillator(); const g=ac.createGain(); g.gain.value=0.12; o.frequency.value=440; o.connect(g).connect(ac.destination); o.start(); flash($('#testTone')); setTimeout(()=>o.stop(),300); logSys('Test tone played'); };
+$('#debug').onclick=()=>{ logSys('secure=',(location.protocol==='https:'||location.hostname==='localhost'),'ac=',!!engine?.ac, engine?.ac?.state, 'worklet=', !!engine?.worklet); flash($('#debug')); };
+
+/* ---------- Librarian (IndexedDB minimal) ---------- */
+const DBN='drumbox-db', DBV=1; let db;
+function idbOpen(){
+  return new Promise((res,rej)=>{
+    const req=indexedDB.open(DBN,DBV);
+    req.onupgradeneeded=()=>{ const d=req.result; d.createObjectStore('patches',{keyPath:'id',autoIncrement:true}); d.createObjectStore('banks',{keyPath:'id',autoIncrement:true}); d.createObjectStore('factory',{keyPath:'k'}); };
+    req.onsuccess=()=>res(req.result); req.onerror=()=>rej(req.error);
+  });
+}
+async function dbInit(){ db=await idbOpen(); await ensureFactory(); renderLib(); }
+function tx(store,mode){ return db.transaction(store,mode).objectStore(store); }
+async function ensureFactory(){
+  const t=tx('factory','readwrite'); t.put({k:'factory', bank: factoryBank()});
+}
+function factoryBank(){ return { name:'Factory', voice: state.voice, pattern: state.pattern, song: state.song }; }
+$('#loadFactory').onclick=async()=>{ const r=await new Promise(res=>{ const req=tx('factory','readonly').get('factory'); req.onsuccess=()=>res(req.result); }); if(r){ state.voice=structuredClone(r.bank.voice); state.pattern=structuredClone(r.bank.pattern); state.song=structuredClone(r.bank.song); setCurrent(state.current); renderPattern(); renderSong(); for(let v=0; v<VOICES; v++) engineSetParams(v); logSys('Factory restored'); } };
+$('#savePatch').onclick=async()=>{ const name=$('#patchName').value.trim()||`V${state.current} ${new Date().toLocaleTimeString()}`; const patch={name, at:Date.now(), voiceIndex:state.current, data: structuredClone(state.voice[state.current])}; const o=tx('patches','readwrite').add(patch); o.onsuccess=()=>renderLib(); flash($('#savePatch')); };
+$('#saveBank').onclick=async()=>{ const bank={name:`Bank ${new Date().toLocaleString()}`, at:Date.now(), voice: structuredClone(state.voice), pattern: structuredClone(state.pattern), song: structuredClone(state.song)}; const o=tx('banks','readwrite').add(bank); o.onsuccess=()=>renderLib(); flash($('#saveBank')); };
+$('#exportBank').onclick=()=>{ const bank={voice:state.voice, pattern:state.pattern, song:state.song, name:songName.value||'Session'}; const blob=new Blob([JSON.stringify(bank,null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='drumbox_bank.json'; a.click(); URL.revokeObjectURL(url); };
+$('#importBank').onclick=()=>$('#importFile').click();
+$('#importFile').onchange=async(e)=>{ const f=e.target.files[0]; if(!f) return; const txt=await f.text(); try{ const bank=JSON.parse(txt); state.voice=bank.voice||state.voice; state.pattern=bank.pattern||state.pattern; state.song=bank.song||state.song; setCurrent(state.current); renderPattern(); renderSong(); for(let v=0; v<VOICES; v++) engineSetParams(v); logSys('Bank imported'); }catch(err){ logSys('Import error',err); } };
+
+/* library list */
+async function renderLib(){
+  const list=$('#libList'); list.innerHTML='';
+  // patches
+  const patches=await new Promise(res=>{ const r=tx('patches','readonly').getAll(); r.onsuccess=()=>res(r.result||[]); });
+  patches.sort((a,b)=>b.at-a.at).forEach(p=>{
+    const row=document.createElement('div'); row.className='item';
+    row.innerHTML=`<div>${p.name}<div class="small">V${p.voiceIndex}</div></div><div class="row"><button class="btn" data-act="load">Load</button><button class="btn" data-act="del">Del</button></div>`;
+    row.querySelector('[data-act="load"]').onclick=()=>{ state.voice[p.voiceIndex]=structuredClone(p.data); setCurrent(p.voiceIndex); engineSetParams(p.voiceIndex); };
+    row.querySelector('[data-act="del"]').onclick=()=>{ const d=tx('patches','readwrite').delete(p.id); d.onsuccess=()=>renderLib(); };
+    list.appendChild(row);
+  });
+  // banks
+  const banks=await new Promise(res=>{ const r=tx('banks','readonly').getAll(); r.onsuccess=()=>res(r.result||[]); });
+  banks.sort((a,b)=>b.at-a.at).forEach(bk=>{
+    const row=document.createElement('div'); row.className='item';
+    row.innerHTML=`<div>${bk.name||'Bank'}<div class="small">${new Date(bk.at).toLocaleString()}</div></div><div class="row"><button class="btn" data-act="load">Load</button><button class="btn" data-act="del">Del</button></div>`;
+    row.querySelector('[data-act="load"]').onclick=()=>{ state.voice=structuredClone(bk.voice); state.pattern=structuredClone(bk.pattern); state.song=structuredClone(bk.song||[]); setCurrent(state.current); renderPattern(); renderSong(); for(let v=0; v<VOICES; v++) engineSetParams(v); };
+    row.querySelector('[data-act="del"]').onclick=()=>{ const d=tx('banks','readwrite').delete(bk.id); d.onsuccess=()=>renderLib(); };
+    list.appendChild(row);
+  });
+}
+
+/* ---------- Web Serial Device transport (best-effort) ---------- */
+const transport = {
+  port:null, reader:null, writer:null, enc:new TextEncoder(), dec:new TextDecoder(),
+  async connect(){ if(!('serial' in navigator)){ logDev('Web Serial not supported'); return false; } this.port=await navigator.serial.requestPort(); await this.port.open({baudRate:115200}); this.writer=this.port.writable.getWriter(); this.reader=this.port.readable.getReader(); logDev('Connected'); return true; },
+  async disconnect(){ try{ this.reader?.releaseLock(); this.writer?.releaseLock(); await this.port?.close(); }catch{} this.port=null; logDev('Disconnected'); },
+  async writeLine(s){ await this.writer.write(this.enc.encode(s+'\n')); },
+  async readLine(timeoutMs=3000){ const deadline=performance.now()+timeoutMs; let buf=''; while(performance.now()<deadline){ const {value,done}=await this.reader.read(); if(done) break; buf+=this.dec.decode(value); const i=buf.indexOf('\n'); if(i>=0){ const line=buf.slice(0,i+1); return line; } } return buf; },
+  async PUT(path, bytes){ await this.writeLine(`PUT ${path} ${bytes.length}`); const ok=await this.readLine(); logDev('PUT handshake:', ok.trim()); const CH=1024; for(let i=0;i<bytes.length;i+=CH){ await this.writer.write(bytes.slice(i,Math.min(i+CH,bytes.length))); } const done=await this.readLine(); logDev('PUT result:', done.trim()); return done.includes('OK'); },
+  async GET(path){ await this.writeLine(`GET ${path}`); let data=new Uint8Array(); while(true){ const {value,done}=await this.reader.read(); if(done) break; const chunk=new Uint8Array(value); // naive: stop at EOF marker if firmware uses it
+        data = concat(data, chunk); if(chunk.length===0) break; if(decoderEndsWithOK(data)) break; }
+    return data;
+  },
+  async CMD(line){ await this.writeLine(line); const ans=await this.readLine(); logDev('CMD', line, '→', ans.trim()); return ans; }
+};
+function concat(a,b){ const c=new Uint8Array(a.length+b.length); c.set(a,0); c.set(b,a.length); return c; }
+function decoderEndsWithOK(u8){ const t=new TextDecoder().decode(u8.slice(-8)); return /OK/.test(t); }
+$('#connect').onclick=async()=>{ const ok=await transport.connect(); toggleBtn($('#connect'),ok); };
+$('#disconnect').onclick=async()=>{ await transport.disconnect(); toggleBtn($('#connect'),false); };
+
+function buildSNDText(){ const out=[]; for(let v=0; v<VOICES; v++){ const p=state.voice[v]; out.push(p.wave,p.env,p.length,p.pitch,p.mod,p.vol,p.pan,p.filter); } return out.join('\n')+'\n'; }
+function buildPATText(){ // 16x16 0/1
+  let s=''; for(let v=0; v<VOICES; v++){ s += state.pattern[v].map(x=>x?1:0).join(' ') + '\n'; } return s;
+}
+function buildSONText(){ return (state.song||[]).join(' ')+'\n'; }
+
+$('#sendSND').onclick=async()=>{ if(!transport.port) return logDev('Not connected'); const slot=Number($('#sndSlot').value)||0; const txt=buildSNDText(); const ok=await transport.PUT(`/SND${slot}`, new TextEncoder().encode(txt)); if(ok) await transport.CMD(`LOADSND ${slot}`); };
+$('#readSND').onclick=async()=>{ if(!transport.port) return logDev('Not connected'); const slot=Number($('#sndSlot').value)||0; const ans=await transport.GET(`/SND${slot}`); const txt=new TextDecoder().decode(ans); logDev('SND content:\n'+txt); };
+$('#sendPAT').onclick=async()=>{ if(!transport.port) return logDev('Not connected'); const slot=Number($('#patSlot').value)||0; const txt=buildPATText(); await transport.PUT(`/PAT${slot}`, new TextEncoder().encode(txt)); };
+$('#readPAT').onclick=async()=>{ if(!transport.port) return logDev('Not connected'); const slot=Number($('#patSlot').value)||0; const ans=await transport.GET(`/PAT${slot}`); logDev('PAT content:\n'+new TextDecoder().decode(ans)); };
+$('#sendSON').onclick=async()=>{ if(!transport.port) return logDev('Not connected'); const slot=Number($('#sonSlot').value)||0; const txt=buildSONText(); await transport.PUT(`/SON${slot}`, new TextEncoder().encode(txt)); };
+$('#readSON').onclick=async()=>{ if(!transport.port) return logDev('Not connected'); const slot=Number($('#sonSlot').value)||0; const ans=await transport.GET(`/SON${slot}`); logDev('SON content:\n'+new TextDecoder().decode(ans)); };
+$('#loadOnDevice').onclick=async()=>{ if(!transport.port) return logDev('Not connected'); const slot=Number($('#sndSlot').value)||0; await transport.CMD(`LOADSND ${slot}`); };
+$('#listFS').onclick=async()=>{ if(!transport.port) return logDev('Not connected'); await transport.CMD('LS'); };
+
+/* ---------- helpers ---------- */
+function flash(el){ toggleBtn(el,true); setTimeout(()=>toggleBtn(el,false),150); }
+function genSine(){ const a=new Float32Array(WT_SIZE); for(let i=0;i<WT_SIZE;i++) a[i]=Math.sin(2*Math.PI*i/WT_SIZE); return a; }
+function genTri(){ const a=new Float32Array(WT_SIZE); for(let i=0;i<WT_SIZE;i++){ const t=i/WT_SIZE; a[i]=1-4*Math.abs(Math.round(t-0.25)-(t-0.25)); } return a; }
+function genSaw(){ const a=new Float32Array(WT_SIZE); for(let i=0;i<WT_SIZE;i++) a[i]=2*(i/WT_SIZE)-1; return a; }
+function genSquare(){ const a=new Float32Array(WT_SIZE); for(let i=0;i<WT_SIZE;i++) a[i]=(i<WT_SIZE/2)?1:-1; return a; }
+function genNoise(){ const a=new Float32Array(WT_SIZE); for(let i=0;i<WT_SIZE;i++) a[i]=Math.random()*2-1; return a; }
+function defaultEnv(idx){ if(idx===0) return [{x:0,y:0},{x:.005,y:1},{x:.08,y:.2},{x:1,y:0}]; if(idx===1) return [{x:0,y:0},{x:.01,y:1},{x:.2,y:.6},{x:1,y:0}]; if(idx===2) return [{x:0,y:0},{x:.02,y:1},{x:.6,y:.8},{x:1,y:0}]; return [{x:0,y:1},{x:1,y:1}]; }
+
+/* ---------- initial draw ---------- */
+buildVoices(); setCurrent(0); renderPattern(); renderSong(); drawWT(); drawEnv(); dbInit();
+
+/* ---------- PWA service worker (inline) ---------- */
+if('serviceWorker' in navigator){
+  const swCode = `
+    const CACHE='drumbox-cache-v1';
+    self.addEventListener('install',e=>{ e.waitUntil(caches.open(CACHE).then(c=>c.addAll(['./']))); });
+    self.addEventListener('fetch',e=>{ e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request))); });
+  `;
+  const blob=new Blob([swCode],{type:'text/javascript'}); const url=URL.createObjectURL(blob);
+  navigator.serviceWorker.register(url).catch(()=>{});
+}
+</script>
+</body>
+</html>
